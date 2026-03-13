@@ -1,0 +1,11 @@
+[project]
+name = "wc-trader"
+version = "0.0.1"
+requires-python = ">=3.12"
+dependencies = [
+"ib_insync==0.9.86",
+"python-dotenv==1.0.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
