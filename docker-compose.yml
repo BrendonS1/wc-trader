@@ -9,11 +9,12 @@ services:
       - TRADING_MODE=paper
       - VNC_SERVER_PASSWORD=
       - TWOFA_TIMEOUT_ACTION=restart
+      - READ_ONLY_API=no
     ports:
-      - "4002:4002"
+      - "4004:4004"
       - "5900:5900"
     healthcheck:
-      test: ["CMD", "bash", "-lc", "nc -z 127.0.0.1 4002"]
+      test: ["CMD", "bash", "-lc", "nc -z 127.0.0.1 4004"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -23,8 +24,7 @@ services:
     container_name: wc-trader
     restart: unless-stopped
     depends_on:
-      ib-gateway:
-        condition: service_healthy
+      - ib-gateway
     env_file:
       - .env
     volumes:
