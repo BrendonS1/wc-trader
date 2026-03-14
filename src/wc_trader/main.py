@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from ib_insync import IB, util
 
 from wc_trader.data.ib_history import fetch_daily_bars
+from wc_trader.risk.risk import RiskLimits, load_risk_limits, gross_exposure_usd
 from wc_trader.portfolio.select import select_2_2_2
 from wc_trader.portfolio.size import TargetPosition, qty_from_atr_risk
 from wc_trader.risk.atr import atr14
@@ -16,19 +17,19 @@ def env_int(name: str, default: int) -> int:
     v = os.getenv(name)
     return default if v is None or v == "" else int(v)
 
-
 def env_float(name: str, default: float) -> float:
     v = os.getenv(name)
     return default if v is None or v == "" else float(v)
 
-
 def load_universe() -> list[str]:
     p = Path("config/universe.json")
+    if not p.exists():
+        raise FileNotFoundError("config/universe.json not found. Please create it.")
     return list(json.loads(p.read_text()))
-
 
 def main():
     load_dotenv()
+    limits: RiskLimits = load_risk_limits()
 
     # IBKR connection (paper via ib-gateway socat port)
     host = os.getenv("IBKR_HOST", "ib-gateway")
@@ -45,10 +46,17 @@ def main():
 
     ib = IB()
     print(f"[wc-trader] connecting to IBKR: host={host} port={port} clientId={client_id}")
-    ib.connect(host, port, clientId=client_id, timeout=10)
+    try:
+        ib.connect(host, port, clientId=client_id, timeout=10)
+    except Exception as e:
+        print(f"[wc-trader] Connection error: {e}")
+        return # Exit if connection fails
 
-    # Use delayed market data if realtime isn't subscribed
-    ib.reqMarketDataType(3)
+    print("[wc-trader] connected:", ib.isConnected())
+    print("[wc-trader] managedAccounts:", ib.managedAccounts())
+
+    current_gross = gross_exposure_usd(ib)
+    print(f"[risk] current gross exposure (USD): {current_gross:.2f} / {limits.max_gross_exposure_usd:.2f}")
 
     signals = []
     atrs: dict[str, float] = {}
