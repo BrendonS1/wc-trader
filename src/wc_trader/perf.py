@@ -5,8 +5,6 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
-
-
 def _to_float(x: str) -> Optional[float]:
     try:
         return float(x)
@@ -15,7 +13,6 @@ def _to_float(x: str) -> Optional[float]:
 
 
 def account_summary_map(ib) -> Dict[str, float]:
-    """Return a best-effort map of IB account summary tag -> numeric value."""
     out: Dict[str, float] = {}
     rows = ib.accountSummary()
     for row in rows:
@@ -31,12 +28,10 @@ def account_summary_map(ib) -> Dict[str, float]:
 
 
 def append_perf_row(ib, path: str = "state/perf.csv") -> None:
-    """Append one performance row to a CSV (timestamp + account summary)."""
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
 
     m = account_summary_map(ib)
-
     row = {
         "ts_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "net_liq": m.get("NetLiquidation"),
