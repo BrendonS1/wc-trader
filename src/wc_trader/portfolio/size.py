@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
 
+from dataclasses import dataclass
+from typing import Sequence
 
 @dataclass(frozen=True)
 class TargetPosition:
@@ -11,7 +12,6 @@ class TargetPosition:
     qty: int
     r60: float
     atr: float
-
 
 def qty_from_atr_risk(risk_usd: float, atr: float) -> int:
     if atr is None or atr <= 0 or math.isnan(float(atr)):
