@@ -24,11 +24,13 @@ services:
     container_name: wc-trader
     restart: unless-stopped
     depends_on:
-      - ib-gateway
+      ib-gateway:
+        condition: service_started
     env_file:
       - .env
     volumes:
       - wc_trader_state:/app/state
-
+      - /home/brendon/openclaw/workspace/bin:/app/bin
+      - /home/brendon/wc_trader/config:/app/config
 volumes:
   wc_trader_state:
