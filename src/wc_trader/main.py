@@ -7,6 +7,8 @@ from ib_insync import IB, util
 
 from wc_trader.data.ib_history import fetch_daily_bars
 from wc_trader.perf import append_perf_row
+from wc_trader.snapshot import snapshot_positions, snapshot_targets
+from wc_trader.snapshot import snapshot_positions, snapshot_targets
 from wc_trader.risk.risk import RiskLimits, load_risk_limits, gross_exposure_usd
 from wc_trader.portfolio.select import select_2_2_2
 from wc_trader.portfolio.size import TargetPosition, qty_from_atr_risk
@@ -59,6 +61,9 @@ def main():
     append_perf_row(ib)
     print("[perf] appended state/perf.csv")
 
+    current_qty = snapshot_positions(ib)
+    print("[snapshot] appended state/positions.csv")
+
     current_gross = gross_exposure_usd(ib)
     print(f"[risk] current gross exposure (USD): {current_gross:.2f} / {limits.max_gross_exposure_usd:.2f}")
 
@@ -104,6 +109,12 @@ def main():
             f"[target] {t.side:5s} {t.symbol:5s} qty={t.qty:4d} "
             f"r60={t.r60:+.2%} atr={t.atr:.4f} risk_usd={risk_usd}"
         )
+
+    snapshot_targets(targets, current_qty)
+    print("[snapshot] appended state/targets.csv")
+
+    snapshot_targets(targets, current_qty)
+    print("[snapshot] appended state/targets.csv")
 
     ib.disconnect()
 
