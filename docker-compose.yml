@@ -22,7 +22,7 @@ services:
   trader:
     build: .
     container_name: wc-trader
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       ib-gateway:
         condition: service_started
@@ -31,6 +31,6 @@ services:
     volumes:
       - wc_trader_state:/app/state
       - /home/brendon/openclaw/workspace/bin:/app/bin
-      - /home/brendon/wc_trader/config:/app/config
+#      - /home/brendon/wc_trader/config:/app/config
 volumes:
   wc_trader_state:
