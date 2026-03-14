@@ -1,55 +1,123 @@
+import json
 import os
-import time
-from dotenv import load_dotenv
-from ib_insync import IB, Stock, util
+from pathlib import Path
 
-from wc_trader.exposure import gross_exposure_usd
-from wc_trader.risk import load_risk_limits
-from wc_trader.sizing import qty_from_notional
+from dotenv import load_dotenv
+from ib_insync import IB, util
+
+from wc_trader.data.ib_history import fetch_daily_bars
+from wc_trader.perf import append_perf_row
+from wc_trader.snapshot import snapshot_positions, snapshot_targets
+from wc_trader.snapshot import snapshot_positions, snapshot_targets
+from wc_trader.risk.risk import RiskLimits, load_risk_limits, gross_exposure_usd
+from wc_trader.portfolio.select import select_2_2_2
+from wc_trader.portfolio.size import TargetPosition, qty_from_atr_risk
+from wc_trader.risk.atr import atr14
+from wc_trader.signals.tsmom import r60_from_closes
+
 
 def env_int(name: str, default: int) -> int:
     v = os.getenv(name)
     return default if v is None or v == "" else int(v)
 
+def env_float(name: str, default: float) -> float:
+    v = os.getenv(name)
+    return default if v is None or v == "" else float(v)
+
+def load_universe() -> list[str]:
+    p = Path("config/universe.json")
+    if not p.exists():
+        raise FileNotFoundError("config/universe.json not found. Please create it.")
+    return list(json.loads(p.read_text()))
+
 def main():
     load_dotenv()
-    limits = load_risk_limits()
-    print("[wc-trader] risk limits:", limits)
+    limits: RiskLimits = load_risk_limits()
 
+    # IBKR connection (paper via ib-gateway socat port)
     host = os.getenv("IBKR_HOST", "ib-gateway")
-    port = env_int("IBKR_PORT", 4004)          # socat port
+    port = env_int("IBKR_PORT", 4004)
     client_id = env_int("IBKR_CLIENT_ID", 7)
-    symbol = os.getenv("SANITY_SYMBOL", "F")
+
+    # Strategy params
+    risk_usd = env_float("RISK_USD_PER_POSITION", 50.0)
+    atr_lookback = env_int("ATR_LOOKBACK", 14)
+    lookback = env_int("TSMOM_LOOKBACK", 60)
+
+    universe = load_universe()
+    print(f"[tsmom] universe size={len(universe)}")
 
     ib = IB()
     print(f"[wc-trader] connecting to IBKR: host={host} port={port} clientId={client_id}")
-    ib.connect(host, port, clientId=client_id, timeout=10)
-
-    # Use delayed market data if realtime isn't subscribed
-    ib.reqMarketDataType(3)
+    try:
+        ib.connect(host, port, clientId=client_id, timeout=10)
+    except Exception as e:
+        print(f"[wc-trader] Connection error: {e}")
+        return # Exit if connection fails
 
     print("[wc-trader] connected:", ib.isConnected())
     print("[wc-trader] managedAccounts:", ib.managedAccounts())
 
+    append_perf_row(ib)
+    print("[perf] appended state/perf.csv")
+
+    current_qty = snapshot_positions(ib)
+    print("[snapshot] appended state/positions.csv")
+
     current_gross = gross_exposure_usd(ib)
     print(f"[risk] current gross exposure (USD): {current_gross:.2f} / {limits.max_gross_exposure_usd:.2f}")
-    contract = Stock(symbol, "SMART", "USD")
-    ib.qualifyContracts(contract)
 
-    ticker = ib.reqMktData(contract, "", False, False)
-    print(f"[wc-trader] streaming {symbol} ticks for ~15s...")
+    signals = []
+    atrs: dict[str, float] = {}
 
-    start = time.time()
-    while True:
-        ib.sleep(1)
-        price = ticker.last or ticker.ask or ticker.bid
-        qty = qty_from_notional(price, limits.max_trade_notional_usd) if price else 0
-        allowed = False
-        if price and qty > 0:
-            allowed = (current_gross + abs(qty * price) <= limits.max_gross_exposure_usd)
-        print(f"[tick] {symbol} bid={ticker.bid} ask={ticker.ask} last={ticker.last} -> qty={qty} allowed={allowed}")
+    for sym in universe:
+        db = fetch_daily_bars(ib, sym, days=max(lookback + atr_lookback + 10, 180))
+        closes = [b.close for b in db.bars]
+        highs = [b.high for b in db.bars]
+        lows = [b.low for b in db.bars]
+
+        sig = r60_from_closes(sym, closes, lookback=lookback)
+        signals.append(sig)
+
+        a = atr14(sym, highs, lows, closes, lookback=atr_lookback)
+        atrs[sym] = a.atr
+
+    sel = select_2_2_2(signals)
+
+    targets: list[TargetPosition] = []
+
+    for s in sel.longs:
+        qty = qty_from_atr_risk(risk_usd, atrs.get(s.symbol, 0.0))
+        targets.append(TargetPosition(symbol=s.symbol, side="LONG", qty=qty, r60=s.r60, atr=atrs.get(s.symbol, 0.0)))
+
+    for s in sel.shorts:
+        qty = qty_from_atr_risk(risk_usd, atrs.get(s.symbol, 0.0))
+        targets.append(TargetPosition(symbol=s.symbol, side="SHORT", qty=qty, r60=s.r60, atr=atrs.get(s.symbol, 0.0)))
+
+    for s in sel.wc:
+        side = "LONG" if s.sign > 0 else "SHORT"
+        qty = qty_from_atr_risk(risk_usd, atrs.get(s.symbol, 0.0))
+        targets.append(TargetPosition(symbol=s.symbol, side=side, qty=qty, r60=s.r60, atr=atrs.get(s.symbol, 0.0)))
+
+    print(
+        f"[tsmom] selection: longs={[s.symbol for s in sel.longs]} "
+        f"shorts={[s.symbol for s in sel.shorts]} wc={[s.symbol for s in sel.wc]}"
+    )
+
+    for t in targets:
+        print(
+            f"[target] {t.side:5s} {t.symbol:5s} qty={t.qty:4d} "
+            f"r60={t.r60:+.2%} atr={t.atr:.4f} risk_usd={risk_usd}"
+        )
+
+    snapshot_targets(targets, current_qty)
+    print("[snapshot] appended state/targets.csv")
+
+    snapshot_targets(targets, current_qty)
+    print("[snapshot] appended state/targets.csv")
+
     ib.disconnect()
-    print("[wc-trader] done")
+
 
 if __name__ == "__main__":
     util.patchAsyncio()
