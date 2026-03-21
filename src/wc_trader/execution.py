@@ -48,6 +48,7 @@ def propose_orders(
     targets,
     current_qty: Dict[str, float],
     limits: RiskLimits,
+    fallback_prices: Optional[Dict[str, float]] = None,
 ) -> List[ProposedOrder]:
     """Turn target positions into proposed market orders (delta-based).
 
@@ -72,27 +73,38 @@ def propose_orders(
     if not deltas:
         return []
 
-    # Pull prices in batch
-    contracts = [Stock(sym, "SMART", "USD") for sym, *_ in deltas]
-    tickers = ib.reqTickers(*contracts)
     px_by_sym: Dict[str, float] = {}
-    for tk in tickers:
-        sym = tk.contract.symbol
-        # prefer marketPrice, fallback last
-        px = None
-        try:
-            if tk.marketPrice() is not None and tk.marketPrice() == tk.marketPrice():
-                px = float(tk.marketPrice())
-        except Exception:
+
+    # Try to pull live/delayed prices in batch (may fail without market data subscription)
+    try:
+        contracts = [Stock(sym, "SMART", "USD") for sym, *_ in deltas]
+        tickers = ib.reqTickers(*contracts)
+        for tk in tickers:
+            sym = tk.contract.symbol
+            # prefer marketPrice, fallback last
             px = None
-        if px is None:
             try:
-                if tk.last is not None and float(tk.last) == float(tk.last):
-                    px = float(tk.last)
+                mp = tk.marketPrice()
+                if mp is not None and float(mp) == float(mp):
+                    px = float(mp)
             except Exception:
                 px = None
-        if px is not None and px > 0:
-            px_by_sym[sym] = px
+            if px is None:
+                try:
+                    if tk.last is not None and float(tk.last) == float(tk.last):
+                        px = float(tk.last)
+                except Exception:
+                    px = None
+            if px is not None and px > 0:
+                px_by_sym[sym] = px
+    except Exception:
+        pass
+
+    # Fallback to last daily close prices if provided
+    if fallback_prices:
+        for sym, px in fallback_prices.items():
+            if sym not in px_by_sym and px is not None and px > 0:
+                px_by_sym[sym] = float(px)
 
     proposed: List[ProposedOrder] = []
     ts = _ts()

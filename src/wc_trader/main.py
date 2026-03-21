@@ -69,10 +69,13 @@ def main():
 
     signals = []
     atrs: dict[str, float] = {}
+    last_close: dict[str, float] = {}
 
     for sym in universe:
         db = fetch_daily_bars(ib, sym, days=max(lookback + atr_lookback + 10, 180))
         closes = [b.close for b in db.bars]
+        if closes:
+            last_close[sym] = float(closes[-1])
         highs = [b.high for b in db.bars]
         lows = [b.low for b in db.bars]
 
@@ -113,7 +116,7 @@ def main():
     snapshot_targets(targets, current_qty)
     print("[snapshot] appended state/targets.csv")
 
-    orders = propose_orders(ib, targets, current_qty, limits)
+    orders = propose_orders(ib, targets, current_qty, limits, fallback_prices=last_close)
     append_orders_csv(orders)
     print(f"[orders] proposed={len(orders)} appended state/orders.csv")
 
