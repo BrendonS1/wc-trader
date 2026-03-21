@@ -8,7 +8,7 @@ from ib_insync import IB, util
 from wc_trader.data.ib_history import fetch_daily_bars
 from wc_trader.perf import append_perf_row
 from wc_trader.snapshot import snapshot_positions, snapshot_targets
-from wc_trader.snapshot import snapshot_positions, snapshot_targets
+from wc_trader.execution import propose_orders, append_orders_csv, maybe_execute_orders
 from wc_trader.risk.risk import RiskLimits, load_risk_limits, gross_exposure_usd
 from wc_trader.portfolio.select import select_2_2_2
 from wc_trader.portfolio.size import TargetPosition, qty_from_atr_risk
@@ -113,8 +113,12 @@ def main():
     snapshot_targets(targets, current_qty)
     print("[snapshot] appended state/targets.csv")
 
-    snapshot_targets(targets, current_qty)
-    print("[snapshot] appended state/targets.csv")
+    orders = propose_orders(ib, targets, current_qty, limits)
+    append_orders_csv(orders)
+    print(f"[orders] proposed={len(orders)} appended state/orders.csv")
+
+    # Phase 2: only executes if EXECUTE_TRADES=1
+    maybe_execute_orders(ib, orders)
 
     ib.disconnect()
 
