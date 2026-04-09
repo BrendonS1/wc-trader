@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
-docker compose run --rm trader
+mkdir -p state
+docker compose run --rm -v "$(pwd)/state:/app/state" trader

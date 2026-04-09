@@ -1,5 +1,7 @@
 [
-  "NVDA","MSFT","AMZN","GOOGL","META","AAPL",
-  "AMD","AVGO","ASML","ARM","ANET","ORCL",
-  "SNOW","PLTR","TSLA","SMCI"
+  "SPY","QQQ","IWM","DIA",
+  "TLT","IEF","HYG",
+  "GLD","SLV",
+  "XLF","XLE","XLK","XLV",
+  "EEM","FXI"
 ]

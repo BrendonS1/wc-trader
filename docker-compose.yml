@@ -31,6 +31,7 @@ services:
     volumes:
       - wc_trader_state:/app/state
       - /home/brendon/openclaw/workspace/bin:/app/bin
-#      - /home/brendon/wc_trader/config:/app/config
+      - /home/brendon/wc_trader/config:/app/config:ro
+      - ./config:/app/config:ro
 volumes:
   wc_trader_state:
